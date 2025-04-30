@@ -87,7 +87,7 @@ class Position {
  */
 class Positions {
   public:
-    Position refPositions[loadingBlockSize*2+10];
+    Position refPositions[loadingBlockSize*2+123];
 
     string chromosome; // current reference chromosome name.'
     int curChromosomeId;
@@ -106,27 +106,28 @@ class Positions {
     Positions(string inputRefFileName) {
         refFile.open(inputRefFileName, ios_base::in);
         LoadChromosomeNamesPos();
+        refPosStartPtr = refPosEndPtr = location = refCoveredPosition = 0;
+        chromosome = "";
     }
 
     ~Positions() {
         refFile.close();
     }
 
-    inline int Mod(int x) { return x >= 2*loadingBlockSize ? x - 2*loadingBlockSize : x; }
+    inline int Mod(int x) { return x >= 2*loadingBlockSize+67 ? x - (2*loadingBlockSize+67) : x; }
 
     void startOutput(bool final_ = false) {
         int start_id = refPosStartPtr;
         int end_id = final_ ? refPosEndPtr : Mod(refPosStartPtr + loadingBlockSize);
         for (int i = start_id; i != end_id; i = Mod(i+1)) {
             Position &pos = refPositions[i];
-            if (pos.isEmpty() || pos.strand == '?') {
-                continue;
+            if (!(pos.isEmpty() || pos.strand == '?')) {
+                const string &chr =
+                    chromosomePos.getChromesomeString(pos.chromosomeId);
+                cout << chr << '\t' << pos.location << '\t'
+                        << pos.strand << '\t' << pos.convertedCount << '\t'
+                        << pos.unconvertedCount << '\n';
             }
-            const string &chr =
-                chromosomePos.getChromesomeString(pos.chromosomeId);
-            cout << chr << '\t' << pos.location << '\t'
-                      << pos.strand << '\t' << pos.convertedCount << '\t'
-                      << pos.unconvertedCount << '\n';
         }
     }
 
@@ -136,7 +137,7 @@ class Positions {
      */
     int getIndex(long long int &targetPos) {
         int firstPos = refPositions[refPosStartPtr].location;
-        int ret = Mod(targetPos - firstPos);
+        int ret = Mod(targetPos - firstPos + refPosStartPtr);
         return ret;
     }
 
@@ -185,13 +186,13 @@ class Positions {
 
 #pragma unroll(60)
         for (int i = 0; i < len; i++) {
-            refPositions[cur + i].initialize();
-            refPositions[cur + i].set(curChromosomeId, location + i);
+            refPositions[Mod(cur + i)].initialize();
+            refPositions[Mod(cur + i)].set(curChromosomeId, location + i);
             char b = line[i];
             if (b == convertFrom) {
-                refPositions[cur + i].set('+');
+                refPositions[Mod(cur + i)].set('+');
             } else if (b == convertFromComplement) {
-                refPositions[cur + i].set('-');
+                refPositions[Mod(cur + i)].set('-');
             }
         }
         location += len;
@@ -201,7 +202,8 @@ class Positions {
     /**
      * initially load reference sequence for 2 million bp
      */
-    void loadNewChromosome(string targetChromosome) {
+    void loadNewChromosome(string targetChromosome, int &meetNext) {
+        meetNext = 0;
         refFile.clear();
         // find the start position in file based on chromosome name.
         streampos startPos =
@@ -215,61 +217,49 @@ class Positions {
 
         string line;
         location = 0;
-        int cur = 0;
+        refPosEndPtr = 0;
         while (refFile.good()) {
             getline(refFile, line);
             if (line.front() == '>') { // this line is chromosome name
+                meetNext = 1;
                 break;                // meet next chromosome, return it.
             } else {
                 if (line.empty()) {
                     continue;
                 }
-                // change all base to upper case
-
-                // for (int i = 0; i < line.size(); i++) {
-                //     line[i] = toupper(line[i]);
-                // }
-                appendRefPosition(line, cur);
+                appendRefPosition(line, refPosEndPtr);
                 if (location >= refCoveredPosition) {
-                    // printf("cur %d\n", cur);
                     break;
                 }
             }
         }
-        refPosEndPtr = cur;
     }
 
+    bool flag_ = false;
     /**
      * load more Position (loadingBlockSize bp) to positions
      * if we meet next chromosome, return false. Else, return ture.
      */
-    void loadMore() {
+    void loadMore(int &meetNext) {
+        meetNext = 0;
         refCoveredPosition += loadingBlockSize;
         string line;
         refPosStartPtr = Mod(refPosStartPtr + loadingBlockSize);
-        int cur = refPosStartPtr;
         while (refFile.good()) {
             getline(refFile, line);
             if (line.front() == '>') { // meet next chromosome, return.
-                // printf("meet next chromosome\n");
+                meetNext = 1;
                 break;
             } else {
                 if (line.empty()) {
                     continue;
                 }
-
-                // // change all base to upper case
-                // for (int i = 0; i < line.size(); i++) {
-                //     line[i] = toupper(line[i]);
-                // }
-
-                appendRefPosition(line, cur);
+                appendRefPosition(line, refPosEndPtr);
                 if (location >= refCoveredPosition) {
                     break;
                 }
             }
         }
-        refPosEndPtr = cur;
     }
 
     /**
@@ -289,8 +279,16 @@ class Positions {
                 continue;
             }
 
-            Position &pos = refPositions[index + b->refPos];
-            assert(pos.location == startPos + b->refPos);
+            Position &pos = refPositions[Mod(index + b->refPos)];
+            if (pos.location != startPos + b->refPos) {
+                cerr << "Error: position mismatch. pos.location is " << pos.location << " which is refPositions+" << Mod(index + b->refPos) << ", but startPos is " << startPos << ", and b->refPos is " << b->refPos << endl;
+                cerr << "newAlignment.location = " << newAlignment.location <<  ", index = " << index << ", b->refPos = " << b->refPos << endl;
+                cerr << "refPositions[refPosStartPtr].location = " << refPositions[refPosStartPtr].location << ", refPosStartPtr = " << refPosStartPtr << endl;
+                cerr << "refPositions[refPosEndPtr-1].location = " << refPositions[refPosEndPtr-1].location << ", refPosEndPtr = " << refPosEndPtr << endl;
+                exit(-1);
+            }
+            // assert(pos.location == startPos + b->refPos);
+            // assert(0 <= b->refPos && b->refPos <= loadingBlockSize);
 
             if (pos.strand == '?') {
                 // this is for CG-only mode. read has a 'C' or 'G' but not 'CG'.

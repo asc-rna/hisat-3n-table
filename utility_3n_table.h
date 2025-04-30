@@ -30,7 +30,7 @@
 
 using namespace std;
 
-const long long int loadingBlockSize = 60000;
+const long long int loadingBlockSize = 12000;
 const char convertFrom = 'C';
 const char convertTo = 'T';
 const char convertFromComplement = 'G';

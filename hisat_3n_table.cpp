@@ -22,6 +22,7 @@
 
 using namespace std;
 
+const int inf = 1234567890;
 string refFileName;
 bool uniqueOnly = false;
 bool multipleOnly = false;
@@ -29,7 +30,7 @@ bool multipleOnly = false;
 
 void printHelp(const char *s) {
     printf("Usage: %s u|m <alignment file>\n", s);
-    printf("example: %s u /mnt/ramdisk/rna/ref/Homo_sapiens.GRCh38.dna.primary_assembly.fa", s);
+    printf("example: %s u /mnt/ramdisk/rna/ref/Homo_sapiens.GRCh38.dna.primary_assembly.fa\n", s);
     exit(-1);
 }
 
@@ -110,39 +111,22 @@ int hisat_3n_table() {
         // if the samChromosome is different than current positions' chromosome,
         // finish all SAM line. then load a new reference chromosome.
         if (samChromosome != positions.chromosome) {
-            // printf("start output final\n");
-            // positions.moveAllToOutput();
-
+            cerr << "chromosome changed from " << positions.chromosome << " to "
+                 << samChromosome << endl << flush;
             positions.startOutput(true);
 
-            // printf("output final finished\n");
-
-            // printf("loading new chromosome: %s\n", samChromosome.c_str());
-
-            positions.loadNewChromosome(samChromosome);
-
-            // printf("new chromosome loaded: %s\n", samChromosome.c_str());
-            // printf("positions.refPositions.size(): %d\n",
-            // positions.refPositions.size());
-
-            reloadPos = loadingBlockSize;
+            int meetNext;
+            positions.loadNewChromosome(samChromosome, meetNext);
+            reloadPos = meetNext ? inf : loadingBlockSize;
             lastPos = 0;
         }
         // if the samPos is larger than reloadPos, load 1 loadingBlockSize bp in
         // from reference.
         while (samPos > reloadPos) {
-            // printf("start output\n");
-            // printf("positions.refPositions.size(): %d\n",
-            // positions.refPositions.size());
             positions.startOutput();
-            // printf("output finished\n");
-            // printf("positions.refPositions.size(): %d\n",
-            // positions.refPositions.size()); positions.moveBlockToOutput();
-            positions.loadMore();
-            // printf("load more finished\n");
-            // printf("positions.refPositions.size(): %d\n",
-            // positions.refPositions.size());
-            reloadPos += loadingBlockSize;
+            int meetNext;
+            positions.loadMore(meetNext);
+            reloadPos += meetNext ? inf : loadingBlockSize;
         }
         if (lastPos > samPos) {
             cerr << "The input alignment file is not sorted. Please use sorted "
@@ -151,12 +135,9 @@ int hisat_3n_table() {
                  << endl;
             throw 1;
         }
-        // printf("pushed a line\n!");
-        // positions.linePool.push(line);
         positions.appendSync(line);
         lastPos = samPos;
     }
-    //}
 
     // prepare to close everything.
 
