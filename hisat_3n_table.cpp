@@ -111,8 +111,9 @@ int hisat_3n_table() {
         // if the samChromosome is different than current positions' chromosome,
         // finish all SAM line. then load a new reference chromosome.
         if (samChromosome != positions.chromosome) {
-            cerr << "chromosome changed from " << positions.chromosome << " to "
-                 << samChromosome << endl << flush;
+            // if (positions.chromosome.size() < 5 && samChromosome.size() < 5)
+            //     cerr << "chromosome changed from " << positions.chromosome << " to "
+            //         << samChromosome << endl << flush;
             positions.startOutput(true);
 
             int meetNext;

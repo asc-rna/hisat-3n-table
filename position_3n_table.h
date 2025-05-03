@@ -26,6 +26,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+// #include <map>
 
 using namespace std;
 
@@ -82,6 +83,9 @@ class Position {
     }
 };
 
+// #define PII pair<int, int>
+// #define MP make_pair
+// map<int, bool> chrPosOutput;
 /**
  * store all reference position in this class.
  */
@@ -122,6 +126,12 @@ class Positions {
         for (int i = start_id; i != end_id; i = Mod(i+1)) {
             Position &pos = refPositions[i];
             if (!(pos.isEmpty() || pos.strand == '?')) {
+                // if (chrPosOutput.find(refPositions[i].location) != chrPosOutput.end()) {
+                //     cerr << "Error: position " << refPositions[i].location << " in chromosome " << refPositions[i].chromosomeId << " is already output." << endl;
+                //     exit(-1);
+                // }
+                // chrPosOutput[refPositions[i].location] = true;
+                
                 const string &chr =
                     chromosomePos.getChromesomeString(pos.chromosomeId);
                 cout << chr << '\t' << pos.location << '\t'
@@ -129,6 +139,7 @@ class Positions {
                         << pos.unconvertedCount << '\n';
             }
         }
+        refPosStartPtr = end_id;
     }
 
     /**
@@ -203,6 +214,7 @@ class Positions {
      * initially load reference sequence for 2 million bp
      */
     void loadNewChromosome(string targetChromosome, int &meetNext) {
+        // chrPosOutput.clear();
         meetNext = 0;
         refFile.clear();
         // find the start position in file based on chromosome name.
@@ -244,7 +256,7 @@ class Positions {
         meetNext = 0;
         refCoveredPosition += loadingBlockSize;
         string line;
-        refPosStartPtr = Mod(refPosStartPtr + loadingBlockSize);
+        // refPosStartPtr = Mod(refPosStartPtr + loadingBlockSize);
         while (refFile.good()) {
             getline(refFile, line);
             if (line.front() == '>') { // meet next chromosome, return.
