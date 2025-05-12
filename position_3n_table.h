@@ -31,54 +31,147 @@
 using namespace std;
 
 /**
+ * store unique information for one base information with readID, and the quality.
+ */
+class uniqueID
+{
+public:
+    unsigned long long readNameID;
+    bool isConverted;
+    char quality;
+    bool removed;
+
+    uniqueID(unsigned long long InReadNameID,
+             bool InIsConverted,
+             char& InQual){
+        readNameID = InReadNameID;
+        isConverted = InIsConverted;
+        quality = InQual;
+        removed = false;
+    }
+};
+
+/**
  * basic class to store reference position information
  */
-class Position {
-  public:
+class Position{
+public:
     short chromosomeId;
     long long int location; // 1-based position
-    char strand;            // +(REF) or -(REF-RC)
-    unsigned short convertedCount = 0;
-    unsigned short unconvertedCount = 0;
-    bool empty = true;
+    char strand; // +(REF) or -(REF-RC)
+    string convertedQualities; // each char is a mapping quality on this position for converted base.
+    string unconvertedQualities; // each char is a mapping quality on this position for unconverted base.
+    vector<uniqueID> uniqueIDs; // each value represent a readName which contributed the base information.
+                              // readNameIDs is to make sure no read contribute 2 times in same position.
 
     void initialize() {
-        // chromosome.clear();
         chromosomeId = -1;
         location = -1;
         strand = '?';
-        convertedCount = 0;
-        unconvertedCount = 0;
-        empty = true;
+        convertedQualities.clear();
+        unconvertedQualities.clear();
+        vector<uniqueID>().swap(uniqueIDs);
     }
 
-    Position() { initialize(); };
+    Position(){
+        initialize();
+    };
 
     /**
      * return true if there is mapping information in this reference position.
      */
-    inline bool isEmpty() { return empty; }
+    bool isEmpty() {
+        return convertedQualities.empty() && unconvertedQualities.empty();
+    }
 
     /**
      * set the chromosome, location (position), and strand information.
      */
 
-    inline void set(int InChromosomeId, long long int inputLoc) {
+    void set (int InChromosomeId, long long int inputLoc) {
         chromosomeId = InChromosomeId;
         location = inputLoc + 1;
     }
 
-    inline void set(char inputStrand) { strand = inputStrand; }
+    void set(char inputStrand) {
+        strand = inputStrand;
+    }
+
+    /**
+     * binary search of readNameID in readNameIDs.
+     * always return a index.
+     * if cannot find, return the index which has bigger value than input readNameID.
+     */
+    int searchReadNameID (unsigned long long&readNameID, int start, int end) {
+        if (uniqueIDs.empty()) {
+            return 0;
+        }
+        if (start <= end) {
+            int middle = (start + end) / 2;
+            if (uniqueIDs[middle].readNameID == readNameID) {
+                return middle;
+            }
+            if (uniqueIDs[middle].readNameID > readNameID) {
+                return searchReadNameID(readNameID, start, middle-1);
+            }
+            return searchReadNameID(readNameID, middle+1, end);
+        }
+        return start; // return the bigger one
+    }
+
+
+    /**
+     * with a input readNameID, add it into readNameIDs.
+     * if the input readNameID already exist in readNameIDs, return false.
+     */
+    bool appendReadNameID(PosQuality& InBase, Alignment& InAlignment) {
+        int idCount = uniqueIDs.size();
+        if (idCount == 0 || InAlignment.readNameID > uniqueIDs.back().readNameID) {
+            uniqueIDs.emplace_back(InAlignment.readNameID, InBase.converted, InBase.qual);
+            return true;
+        }
+        int index = searchReadNameID(InAlignment.readNameID, 0, idCount);
+        if (uniqueIDs[index].readNameID == InAlignment.readNameID) {
+            // if the new base is consistent with exist base's conversion status, ignore
+            // otherwise, delete the exist conversion status
+            if (uniqueIDs[index].removed) {
+                return false;
+            }
+            if (uniqueIDs[index].isConverted != InBase.converted) {
+                uniqueIDs[index].removed = true;
+                if (uniqueIDs[index].isConverted) {
+                    for (int i = 0; i < convertedQualities.size(); i++) {
+                        if (convertedQualities[i] == InBase.qual) {
+                            convertedQualities.erase(convertedQualities.begin()+i);
+                            return false;
+                        }
+                    }
+                } else {
+                    for (int i = 0; i < unconvertedQualities.size(); i++) {
+                        if (unconvertedQualities[i] == InBase.qual) {
+                            unconvertedQualities.erase(unconvertedQualities.begin()+i);
+                            return false;
+                        }
+                    }
+                }
+            }
+            return false;
+        } else {
+            uniqueIDs.emplace(uniqueIDs.begin()+index, InAlignment.readNameID, InBase.converted, InBase.qual);
+            return true;
+        }
+    }
 
     /**
      * append the SAM information into this position.
      */
-    void appendBase(PosQuality &input, Alignment &a) {
-        empty = false;
-        if (input.converted) {
-            convertedCount++;
-        } else {
-            unconvertedCount++;
+    void appendBase (PosQuality& input, Alignment& a) {
+        if (appendReadNameID(input,a)) {
+            if (input.converted) {
+                convertedQualities += input.qual;
+            } else {
+                unconvertedQualities += input.qual;
+            }
         }
     }
 };
@@ -135,8 +228,8 @@ class Positions {
                 const string &chr =
                     chromosomePos.getChromesomeString(pos.chromosomeId);
                 cout << chr << '\t' << pos.location << '\t'
-                        << pos.strand << '\t' << pos.convertedCount << '\t'
-                        << pos.unconvertedCount << '\n';
+                        << pos.strand << '\t' << pos.convertedQualities.size() << '\t'
+                        << pos.unconvertedQualities.size() << '\n';
             }
         }
         refPosStartPtr = end_id;
